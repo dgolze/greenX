@@ -26,6 +26,8 @@ module minimax_utils
   integer, parameter, public :: cosine_wt = 2
   integer, parameter, public :: sine_tw = 3
 
+  public :: invert_real_matrix
+
 contains
 
   !> \brief Find first element in unsorted array that is strictly greater than a given value
@@ -87,5 +89,37 @@ contains
     ac_we(:) = this%aw_erange_matrix(:, ien)
 
   end subroutine coeffs_and_weights
+
+ !> \brief returns the inverse of a symmetric matrix using LU factorization (lapack)
+ !! @param[inout] a real symmetric matrix 
+   subroutine invert_real_matrix(a)
+      real(kind=dp), dimension(:, :), intent(inout)      :: a
+
+
+      integer                                            :: lwork, n, info
+      integer, dimension(:),  allocatable                :: ipiv
+      real(kind=dp), dimension(:), allocatable           :: work
+
+      n = size(a, 1)
+      lwork = 20*n
+      allocate (ipiv(n))
+      allocate (work(lwork))
+      ipiv = 0
+      work = 0.0_dp
+      info = 0
+      call dgetrf(n, n, a, n, ipiv, info)
+      if (info /=0 ) then
+        write(*,*) "LU decomposition has failed"
+        stop
+      endif
+      if (info == 0) THEN
+         call dgetri(n, a, n, ipiv, work, lwork, info)
+      end if
+      if (info /=0 ) then
+        write(*,*) "LU inversion has failed"
+        stop
+      endif
+      deallocate (ipiv, work)
+   end subroutine invert_real_matrix
 
 end module minimax_utils

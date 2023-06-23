@@ -20,7 +20,8 @@ module minimax_grids
   use constants,         only: pi
   use minimax_tau,       only: get_points_weights_tau
   use minimax_omega,     only: get_points_weights_omega
-  use minimax_utils,     only: cosine_wt, cosine_tw, sine_tw
+  use minimax_utils,     only: cosine_wt, cosine_tw, sine_tw,&
+                               invert_real_matrix
   use lapack_interfaces, only: dgemm, dgesdd
 
   implicit none
@@ -133,6 +134,10 @@ contains
     call get_transformation_weights(num_points, tau_points, omega_points, cosft_tw, e_min, e_max, &
          max_errors(2), cos_w_to_cos_t, ierr)
     if (ierr /= 0) return
+
+    !**** DG comments
+    !1. set cost_wt = cosft_tw, i.e., overwrite cosft_wt with the value for delta; check if you need a transpose
+    !2. call invert_real_matrix(cost_wt) --> overwrites it with the inverse, which then is eta
 
     ! get the weights for the sine transform Sigma^sin(it) -> Sigma^sin(iw) (PRB 94, 165109 (2016), Eq. 71)
     call get_transformation_weights(num_points, tau_points, omega_points, sinft_wt, e_min, e_max, &
