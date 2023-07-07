@@ -1,4 +1,4 @@
-! ***************************************************************************************************
+!***************************************************************************************************
 !  Copyright (C) 2020-2023 Green-X library                                                          
 !  This file is distributed under the terms of the APACHE2 License.                                 
 !                                                                                                   
@@ -26,7 +26,7 @@ module minimax_utils
   integer, parameter, public :: cosine_wt = 2
   integer, parameter, public :: sine_tw = 3
 
-  public :: invert_real_matrix
+  public :: invert_real_matrix, get_condition_number
 
 contains
 
@@ -121,5 +121,39 @@ contains
       endif
       deallocate (ipiv, work)
    end subroutine invert_real_matrix
+
+ !> \brief returns the condition number of a matrix 
+ !! @param[inout] a real symmetric matrix 
+   subroutine get_condition_number(a, rcond)
+      real(kind=dp), dimension(:, :), intent(in)         :: a
+      real(kind=dp), intent(out)                         :: rcond                 
+
+      integer                                            :: n, info
+      integer, dimension(:), allocatable                 :: iwork
+      real(kind=dp)                                      :: anorm
+      real(kind=dp), dimension(:), allocatable           :: work
+      real(kind=dp), external                            :: dlange
+
+      n = size(a, 1)
+
+      allocate (work(3*n), iwork(n))
+      ! norm of matrix
+      anorm = dlange('1', n, n, a, n, work)
+      ! Cholesky factorization (fails if matrix not positive definite)
+      CALL dpotrf('U', n, a, n, info)
+      IF (info == 0) THEN
+        ! condition number
+        call dpocon('U', n, a, n, anorm, rcond, work, iwork, info)
+        if (info /= 0) then
+           write(*,*) "DPOCON failed"
+           stop
+        end if
+      else
+         write(*,*) "cholesky factorization faile, matrix not positive definite"
+         stop
+      end if
+      deallocate (work, iwork)
+
+   end subroutine get_condition_number
 
 end module minimax_utils
