@@ -77,8 +77,9 @@ contains
     real(kind=dp), dimension(:), allocatable          :: x_tw
     real(kind=dp), dimension(:, :), allocatable       :: mat
     real(kind=dp), dimension(:, :), allocatable       :: tmp_cosft_wt, tmp_cosft_tw
+    real(kind=dp), dimension(3,3)                     :: matx
 
-    my_bare_cos_sin_weights = .false.!/dss/dsshome1/0C/di46hiq/libs/CP2K_ENV/greenX/GX-TimeFrequency/src/minimax_grids.F90
+    my_bare_cos_sin_weights = .false.
     if (present(bare_cos_sin_weights)) then
        my_bare_cos_sin_weights = bare_cos_sin_weights
     endif
@@ -140,9 +141,15 @@ contains
     !**** DG comments
     !1. set cost_wt = cosft_tw, i.e., overwrite cosft_wt with the value for delta; check if you need a transpose
     cosft_wt(:,:) = cosft_tw
-    call get_condition_number(cosft_wt,rcond)
+    !call get_condition_number(cosft_wt,rcond)
+    !matx = reshape([1,2,0,2,4,1,2,1,0],shape(matx))
+    matx = reshape([10,5,2,5,3,2,2,2,3],shape(matx))
+    call invert_real_matrix(matx)
+    write(*,*) matx
+    call get_condition_number(matx,rcond)
     rcond = LOG(1._dp/rcond)
     write(*,*) "rcond", rcond
+    stop
     call invert_real_matrix(cosft_wt) !--> overwrites it with the inverse, which then is eta
 
     ! get the weights for the sine transform Sigma^sin(it) -> Sigma^sin(iw) (PRB 94, 165109 (2016), Eq. 71)
