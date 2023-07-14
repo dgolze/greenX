@@ -26,7 +26,7 @@ module minimax_utils
   integer, parameter, public :: cosine_wt = 2
   integer, parameter, public :: sine_tw = 3
 
-  public :: invert_real_matrix, get_condition_number
+  public :: invert_real_matrix, get_pseudo_inverse_svd
 
 contains
 
@@ -90,7 +90,7 @@ contains
 
   end subroutine coeffs_and_weights
 
- !> \brief returns the inverse of a symmetric matrix using LU factorization (lapack)
+ !> \brief returns the inverse of a real matrix using LU factorization (lapack)
  !! @param[inout] a real symmetric matrix 
    subroutine invert_real_matrix(a)
       real(kind=dp), dimension(:, :), intent(inout)      :: a
@@ -112,7 +112,7 @@ contains
         write(*,*) "LU decomposition has failed"
         stop
       endif
-      if (info == 0) THEN
+      if (info == 0) then
          call dgetri(n, a, n, ipiv, work, lwork, info)
       end if
       if (info /=0 ) then
@@ -122,38 +122,82 @@ contains
       deallocate (ipiv, work)
    end subroutine invert_real_matrix
 
- !> \brief returns the condition number of a matrix 
- !! @param[inout] a real symmetric matrix 
-   subroutine get_condition_number(a, rcond)
-      real(kind=dp), dimension(:, :), intent(in)         :: a
-      real(kind=dp), intent(out)                         :: rcond                 
+!> \brief returns the pseudoinverse of a real, square matrix using singular
+!>         value decomposition
+!! @param a matrix a
+!! @param a_pinverse pseudoinverse of matrix a
+!! @param rskip parameter for setting small singular values to zero
+!! @param determinant determinant of matrix a (optional output)
+!! @param sval array holding singular values of matrix a (optional output)
+   subroutine get_pseudo_inverse_svd(a, a_pinverse, rskip, determinant, sval)
 
-      integer                                            :: n, info
-      integer, dimension(:), allocatable                 :: iwork
-      real(kind=dp)                                      :: anorm
-      real(kind=dp), dimension(:), allocatable           :: work
-      real(kind=dp), external                            :: dlange
+      real(kind=dp), dimension(:,:)                     :: a, a_pinverse
+      real(kind=dp), intent(in)                         :: rskip
+      real(kind=dp), intent(out), optional              :: determinant
+      real(kind=dp), dimension(:), intent(inout), &
+         optional, allocatable                          :: sval
+
+      integer                                           :: i, info, lwork, n
+      integer, allocatable, dimension(:)                :: iwork
+      real(kind=dp), allocatable, dimension(:)          :: sig, work
+      real(kind=dp), allocatable, dimension(:,:)        :: sig_plus, temp_mat, u, vt
+
 
       n = size(a, 1)
+      allocate (u(n, n), vt(n, n), sig(n), sig_plus(n, n), iwork(8*n), work(1), temp_mat(n, n))
+      u(:, :) = 0.0_dp
+      vt(:, :) = 0.0_dp
+      sig(:) = 0.0_dp
+      sig_plus = 0.0_dp
+      work = 0.0_dp
+      iwork = 0
+      if (present(determinant)) determinant = 1.0_dp
 
-      allocate (work(3*n), iwork(n))
-      ! norm of matrix
-      anorm = dlange('1', n, n, a, n, work)
-      ! Cholesky factorization (fails if matrix not positive definite)
-      CALL dpotrf('U', n, a, n, info)
-      IF (info == 0) THEN
-        ! condition number
-        call dpocon('U', n, a, n, anorm, rcond, work, iwork, info)
-        if (info /= 0) then
-           write(*,*) "DPOCON failed"
-           stop
-        end if
-      else
-         write(*,*) "cholesky factorization faile, matrix not positive definite"
-         stop
+      ! work size query
+      lwork = -1
+       call dgesdd('A', n, n, a(1, 1), n, sig(1), u(1, 1), n, vt(1, 1), n, work(1), &
+                  lwork, iwork(1), info)
+
+      if (info /= 0) then
+        write(*,*) "ERROR in DGESDD: Could not retrieve work array sizes"
       end if
-      deallocate (work, iwork)
+      lwork = int(work(1))
+      deallocate (work)
+      allocate (work(lwork))
 
-   end subroutine get_condition_number
+      ! do SVD
+      call dgesdd('A', n, n, a(1, 1), n, sig(1), u(1, 1), n, vt(1, 1), n, work(1), &
+                  lwork, iwork(1), info)
+
+      if (info /= 0) then
+         write(*,*) "SVD failed"
+      end if
+
+      if (present(sval)) then
+         allocate (sval(n))
+         sval(:) = sig
+      end if
+
+      ! set singular values that are too small to zero
+      do i = 1, n
+         write(*,*) "sig(i)", i, sig(i)
+         if (sig(i) > rskip*maxval(sig)) then
+            if (present(determinant)) &
+               determinant = determinant*sig(i)
+            sig_plus(i, i) = 1._dp/sig(i)
+         else
+            sig_plus(i, i) = 0.0_dp
+         end if
+      end do
+
+      ! build pseudoinverse: V*sig_plus*UT
+      call dgemm("N", "T", n, n, n, 1._dp, sig_plus, n, u, n, 0._dp, temp_mat, n)
+      call dgemm("T", "N", n, n, n, 1._dp, vt, n, temp_mat, n, 0._dp, a_pinverse, n)
+
+      deallocate (u, vt, sig, iwork, work, sig_plus, temp_mat)
+
+
+   end subroutine get_pseudo_inverse_svd
+
 
 end module minimax_utils

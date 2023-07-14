@@ -22,7 +22,7 @@ module minimax_grids
   use minimax_omega,     only: get_points_weights_omega
   use minimax_utils,     only: cosine_wt, cosine_tw, sine_tw,&
                                invert_real_matrix,&
-                               get_condition_number
+                               get_pseudo_inverse_svd
   use lapack_interfaces, only: dgemm, dgesdd
 
   implicit none
@@ -73,13 +73,12 @@ contains
     integer, parameter                                :: sin_t_to_sin_w = 3
     integer                                           :: i_point, j_point
     real(kind=dp)                                     :: e_range, scaling
-    real(kind=dp)                                     :: rcond !DG
     real(kind=dp), dimension(:), allocatable          :: x_tw
     real(kind=dp), dimension(:, :), allocatable       :: mat
     real(kind=dp), dimension(:, :), allocatable       :: tmp_cosft_wt, tmp_cosft_tw
-    real(kind=dp), dimension(3,3)                     :: matx
 
     my_bare_cos_sin_weights = .false.
+    my_bare_cos_sin_weights = .true. !!DG
     if (present(bare_cos_sin_weights)) then
        my_bare_cos_sin_weights = bare_cos_sin_weights
     endif
@@ -129,9 +128,9 @@ contains
     allocate (tmp_cosft_tw(num_points, num_points))
 
     ! get the weights for the cosine transform W^c(it) -> W^c(iw)
-    call get_transformation_weights(num_points, tau_points, omega_points, cosft_wt, e_min, e_max, &
-         max_errors(1), cos_t_to_cos_w, ierr)
-    if (ierr /= 0) return
+  !  call get_transformation_weights(num_points, tau_points, omega_points, cosft_wt, e_min, e_max, &
+  !       max_errors(1), cos_t_to_cos_w, ierr)
+  !  if (ierr /= 0) return
 
     ! get the weights for the cosine transform W^c(iw) -> W^c(it)
     call get_transformation_weights(num_points, tau_points, omega_points, cosft_tw, e_min, e_max, &
@@ -139,18 +138,7 @@ contains
     if (ierr /= 0) return
 
     !**** DG comments
-    !1. set cost_wt = cosft_tw, i.e., overwrite cosft_wt with the value for delta; check if you need a transpose
-    cosft_wt(:,:) = cosft_tw
-    !call get_condition_number(cosft_wt,rcond)
-    !matx = reshape([1,2,0,2,4,1,2,1,0],shape(matx))
-    matx = reshape([10,5,2,5,3,2,2,2,3],shape(matx))
-    call invert_real_matrix(matx)
-    write(*,*) matx
-    call get_condition_number(matx,rcond)
-    rcond = LOG(1._dp/rcond)
-    write(*,*) "rcond", rcond
-    stop
-    call invert_real_matrix(cosft_wt) !--> overwrites it with the inverse, which then is eta
+    !call get_pseudo_inverse_svd(matx,matx_inv,1.E-8_dp)
 
     ! get the weights for the sine transform Sigma^sin(it) -> Sigma^sin(iw) (PRB 94, 165109 (2016), Eq. 71)
     call get_transformation_weights(num_points, tau_points, omega_points, sinft_wt, e_min, e_max, &
@@ -162,24 +150,30 @@ contains
     if(.not.my_bare_cos_sin_weights) then
        do j_point = 1, num_points
           do i_point = 1, num_points
-             cosft_wt(j_point, i_point) = cosft_wt(j_point, i_point)*cos(tau_points(i_point)*omega_points(j_point))
+             !cosft_wt(j_point, i_point) = cosft_wt(j_point, i_point)*cos(tau_points(i_point)*omega_points(j_point))
              cosft_tw(i_point, j_point) = cosft_tw(i_point, j_point)*cos(tau_points(i_point)*omega_points(j_point))
              sinft_wt(j_point, i_point) = sinft_wt(j_point, i_point)*sin(tau_points(i_point)*omega_points(j_point))
           end do
        end do
-
-     ! cosft_wt(:,:) = cosft_tw
-     !! cosft_wt = TRANSPOSE(cosft_wt)
-     ! call invert_real_matrix(cosft_wt) !--> overwrites it with the inverse, which then is eta
+      cosft_wt(:,:) = cosft_tw
+      call invert_real_matrix(cosft_wt) !--> overwrites it with the inverse, which then is eta
 
 
     else
        do j_point = 1, num_points
           do i_point = 1, num_points
-             tmp_cosft_wt(j_point, i_point) = cosft_wt(j_point, i_point)*cos(tau_points(i_point)*omega_points(j_point))
+             !tmp_cosft_wt(j_point, i_point) = cosft_wt(j_point, i_point)*cos(tau_points(i_point)*omega_points(j_point))
              tmp_cosft_tw(i_point, j_point) = cosft_tw(i_point, j_point)*cos(tau_points(i_point)*omega_points(j_point))
           end do
        end do
+      tmp_cosft_wt(:,:) = tmp_cosft_tw
+      call invert_real_matrix(tmp_cosft_wt) !--> overwrites it with the inverse, which then is eta
+      do j_point = 1, num_points
+         do i_point = 1, num_points
+            cosft_wt(j_point, i_point) = tmp_cosft_wt(j_point, i_point)/cos(tau_points(i_point)*omega_points(j_point))
+         end do
+      end do
+
     end if
 
     allocate (mat(num_points, num_points))
